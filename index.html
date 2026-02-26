@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plans Interactifs Pro</title>
+
+<style>
+body{
+margin:0;
+font-family:Arial;
+background:#f3f4f6;
+}
+
+header{
+display:flex;
+gap:8px;
+padding:10px;
+background:#1f2937;
+color:white;
+flex-wrap:wrap;
+align-items:center;
+}
+
+button{
+padding:6px 12px;
+border:none;
+border-radius:6px;
+background:#2563eb;
+color:white;
+cursor:pointer;
+}
+
+button.active{
+background:#16a34a;
+}
+
+#tabs{
+display:flex;
+gap:6px;
+padding:8px;
+background:#e5e7eb;
+overflow:auto;
+}
+
+.tab{
+background:white;
+padding:6px 12px;
+border-radius:6px;
+cursor:pointer;
+white-space:nowrap;
+}
+
+.tab.active{
+background:#2563eb;
+color:white;
+}
+
+#viewer{
+position:relative;
+height:calc(100vh - 120px);
+background:#ddd;
+overflow:hidden;
+}
+
+#viewer img,
+#viewer iframe{
+width:100%;
+height:100%;
+object-fit:contain;
+border:none;
+pointer-events:none;
+}
+
+.point{
+position:absolute;
+width:18px;
+height:18px;
+background:red;
+border-radius:50%;
+transform:translate(-50%,-50%);
+cursor:pointer;
+z-index:20;
+}
+
+#interactionLayer{
+position:absolute;
+inset:0;
+z-index:5;
+cursor:crosshair;
+}
+
+.popup{
+position:absolute;
+background:white;
+border:1px solid #333;
+padding:8px;
+display:none;
+z-index:50;
+}
+
+textarea{
+width:220px;
+height:100px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+<input type="file" id="planFile" accept="image/*,.pdf">
+<button onclick="addPlan()">+ Plan</button>
+
+<button id="btnAdd" onclick="setMode('add')">Ajouter point</button>
+<button id="btnDelete" onclick="setMode('delete')">Supprimer point</button>
+<button id="btnRead" onclick="setMode('read')">Mode lecture</button>
+</header>
+
+<div id="tabs"></div>
+<div id="viewer"></div>
+
+<div id="popup" class="popup">
+<textarea id="pointText"></textarea><br>
+<button onclick="savePoint()">Sauvegarder</button>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyC6g7hrPO5XIvUZR3hi-oSO_MoLFwdotZM",
+  authDomain: "plan-eclairage.firebaseapp.com",
+  projectId: "plan-eclairage",
+  storageBucket: "plan-eclairage.firebasestorage.app",
+  messagingSenderId: "279933407901",
+  appId: "1:279933407901:web:969ed5a2975d969e65fa74",
+  measurementId: "G-W8NX0Q5JLD"
+};
+
+firebase.initializeApp(firebaseConfig);
+const cloudDB = firebase.firestore();
+</script>
+
+<script>
+let db = JSON.parse(localStorage.getItem("plansDB") || "{}")
+let current = null
+let mode = "read"
+let drag = null
+let currentPoint = null
+
+const viewer = document.getElementById("viewer")
+const tabs = document.getElementById("tabs")
+const popup = document.getElementById("popup")
+const pointText = document.getElementById("pointText")
+
+function save(){
+
+localStorage.setItem("plansDB", JSON.stringify(db))
+
+if(!cloudDB) return
+
+cloudDB.collection("plans")
+.doc("main")
+.set(db)
+
+}
+
+function setMode(m){
+mode = m
+document.querySelectorAll("header button").forEach(b => b.classList.remove("active"))
+if(m==="add") btnAdd.classList.add("active")
+if(m==="delete") btnDelete.classList.add("active")
+if(m==="read") btnRead.classList.add("active")
+}
+
+function renderTabs(){
+tabs.innerHTML = ""
+Object.keys(db).forEach(name=>{
+const t = document.createElement("div")
+t.className = "tab" + (name===current ? " active" : "")
+t.textContent = name
+t.onclick = ()=> openPlan(name)
+tabs.appendChild(t)
+})
+}
+
+function addPlan(){
+const file = document.getElementById("planFile").files[0]
+if(!file) return
+
+const reader = new FileReader()
+reader.onload = e=>{
+db[file.name] = {
+file: e.target.result,
+fileType: file.type,
+points: {}
+}
+current = file.name
+save()
+renderTabs()
+openPlan(current)
+}
+reader.readAsDataURL(file)
+}
+
+function openPlan(name){
+current = name
+viewer.innerHTML = ""
+renderTabs()
+
+const p = db[name]
+
+if(p.fileType==="application/pdf"){
+const pdf = document.createElement("iframe")
+pdf.src = p.file
+viewer.appendChild(pdf)
+}else{
+const img = document.createElement("img")
+img.src = p.file
+viewer.appendChild(img)
+}
+
+// couche interaction
+const layer = document.createElement("div")
+layer.id = "interactionLayer"
+layer.addEventListener("click", viewerClick)
+viewer.appendChild(layer)
+
+drawPoints()
+}
+
+function viewerClick(e){
+if(mode!=="add" || !current) return
+
+const rect = viewer.getBoundingClientRect()
+const x = ((e.clientX - rect.left) / rect.width) * 100
+const y = ((e.clientY - rect.top) / rect.height) * 100
+
+const id = Date.now()
+db[current].points[id] = { x, y, text: "" }
+
+save()
+drawPoints()
+}
+
+function drawPoints(){
+document.querySelectorAll(".point").forEach(p=>p.remove())
+
+const pts = db[current]?.points || {}
+
+Object.entries(pts).forEach(([id,p])=>{
+const d = document.createElement("div")
+d.className = "point"
+d.style.left = p.x + "%"
+d.style.top = p.y + "%"
+d.dataset.id = id
+
+d.addEventListener("click", e=>{
+e.stopPropagation()
+
+if(mode==="delete"){
+delete db[current].points[id]
+save()
+drawPoints()
+return
+}
+
+if(mode==="read"){
+currentPoint = id
+popup.style.display = "block"
+popup.style.left = e.pageX + "px"
+popup.style.top = e.pageY + "px"
+pointText.value = p.text || ""
+}
+})
+
+d.addEventListener("mousedown", e=>{
+drag = d
+e.stopPropagation()
+})
+
+viewer.appendChild(d)
+})
+}
+
+document.addEventListener("mousemove", e=>{
+if(!drag) return
+
+const rect = viewer.getBoundingClientRect()
+const x = ((e.clientX - rect.left) / rect.width) * 100
+const y = ((e.clientY - rect.top) / rect.height) * 100
+
+drag.style.left = x + "%"
+drag.style.top = y + "%"
+
+db[current].points[drag.dataset.id].x = x
+db[current].points[drag.dataset.id].y = y
+})
+
+document.addEventListener("mouseup", ()=>{
+if(drag) save()
+drag = null
+})
+
+function savePoint(){
+db[current].points[currentPoint].text = pointText.value
+save()
+popup.style.display = "none"
+}
+
+renderTabs()
+setMode("read")
+
+if(typeof cloudDB !== "undefined"){
+
+cloudDB
+.collection("plans")
+.doc("main")
+.onSnapshot(doc=>{
+
+if(!doc.exists) return
+
+db = doc.data()
+
+renderTabs()
+
+if(current && db[current]){
+openPlan(current)
+}else{
+const first = Object.keys(db)[0]
+if(first) openPlan(first)
+}
+
+})
+
+}
+
+</script>
+
+</body>
+</html>
