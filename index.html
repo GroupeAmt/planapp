@@ -6,7 +6,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>Plans Cloud</title>
+<title>PlanApp</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
@@ -47,6 +47,7 @@ display:flex;
 gap:6px;
 padding:6px;
 background:#e5e7eb;
+overflow-x:auto;
 }
 
 .tab{
@@ -54,6 +55,7 @@ padding:6px 10px;
 background:#9ca3af;
 border-radius:6px;
 cursor:pointer;
+white-space:nowrap;
 }
 
 .tab.active{
@@ -75,8 +77,8 @@ transform-origin:0 0;
 
 .point{
 position:absolute;
-width:12px;
-height:12px;
+width:14px;
+height:14px;
 border-radius:50%;
 border:2px solid white;
 transform:translate(-50%,-50%);
@@ -112,8 +114,8 @@ height:80px;
 
 <button onclick="addPlan()">+ Plan</button>
 
-<button id="btnAdd" onclick="setMode('add')">Ajouter</button>
-<button id="btnDelete" onclick="setMode('delete')">Supprimer</button>
+<button id="btnAdd" onclick="setMode('add')">Ajouter point</button>
+<button id="btnDelete" onclick="setMode('delete')">Supprimer point</button>
 <button id="btnRead" onclick="setMode('read')" class="active">Lecture</button>
 
 <button onclick="toggleLock()" id="lockBtn">🔓</button>
@@ -292,7 +294,7 @@ reader.onload=async e=>{
 let fileData=e.target.result
 let fileType=file.type
 
-// conversion PDF → image pour accélérer
+let name=file.name.replace(/\.[^/.]+$/, "")
 
 if(fileType==="application/pdf"){
 
@@ -315,7 +317,13 @@ fileType="image/jpeg"
 
 }
 
-const name="Plan "+(Object.keys(plans).length+1)
+let original=name
+let i=2
+
+while(plans[name]){
+name=original+" ("+i+")"
+i++
+}
 
 plans[name]={
 
@@ -384,7 +392,6 @@ state:"green"
 }
 
 saveCloud()
-
 drawPoints()
 
 }
@@ -454,6 +461,7 @@ closePopup()
 if(mode==="delete"){
 
 delete plans[currentPlan].points[id]
+
 saveCloud()
 drawPoints()
 return
@@ -465,6 +473,7 @@ if(mode==="read"){
 selectedPoint=id
 
 popup.style.display="block"
+
 popup.style.left=e.clientX+"px"
 popup.style.top=e.clientY+"px"
 
@@ -517,7 +526,6 @@ p.state=state.value
 saveCloud()
 
 closePopup()
-
 drawPoints()
 
 }
