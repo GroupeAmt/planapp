@@ -10,6 +10,9 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
 <style>
 
 body{
@@ -77,8 +80,8 @@ transform-origin:0 0;
 
 .point{
 position:absolute;
-width:14px;
-height:14px;
+width:12px;
+height:12px;
 border-radius:50%;
 border:2px solid white;
 transform:translate(-50%,-50%);
@@ -148,6 +151,25 @@ height:80px;
 
 <script>
 
+/* FIREBASE */
+
+const firebaseConfig = {
+
+apiKey: "AIzaSyC6g7hrPO5XIvUZR3hi-oSO_MoLFwdotZM",
+authDomain: "plan-eclairage.firebaseapp.com",
+projectId: "plan-eclairage",
+storageBucket: "plan-eclairage.firebasestorage.app",
+messagingSenderId: "279933407901",
+appId: "1:279933407901:web:969ed5a2975d969e65fa74"
+
+}
+
+firebase.initializeApp(firebaseConfig)
+
+const cloudDB = firebase.firestore()
+
+/* VARIABLES */
+
 let plans={}
 let planOrder=[]
 let currentPlan=null
@@ -166,6 +188,42 @@ let draggingPoint=null
 let selectedPoint=null
 
 const viewer=document.getElementById("viewer")
+
+/* CLOUD SAVE */
+
+async function saveCloud(){
+
+await cloudDB.collection("plans").doc("data").set({
+
+plans:plans,
+planOrder:planOrder
+
+},{merge:true})
+
+}
+
+/* CLOUD LOAD */
+
+function loadCloud(){
+
+cloudDB.collection("plans").doc("data")
+.onSnapshot(doc=>{
+
+const data=doc.data()
+if(!data) return
+
+plans=data.plans || {}
+planOrder=data.planOrder || []
+
+if(!currentPlan)
+currentPlan=planOrder[0]
+
+renderTabs()
+openPlan()
+
+})
+
+}
 
 /* LOCK */
 
@@ -242,7 +300,7 @@ openPlan()
 
 }
 
-/* RIGHT CLICK MENU */
+/* RIGHT CLICK */
 
 t.oncontextmenu=e=>{
 
@@ -263,6 +321,8 @@ planOrder=planOrder.map(p=>p===name?newName:p)
 
 currentPlan=newName
 
+saveCloud()
+
 }
 
 }
@@ -277,6 +337,8 @@ planOrder=planOrder.filter(p=>p!==name)
 
 currentPlan=planOrder[0]
 
+saveCloud()
+
 }
 
 }
@@ -286,7 +348,7 @@ openPlan()
 
 }
 
-/* DRAG TAB */
+/* DRAG TABS */
 
 t.ondragstart=e=>{
 e.dataTransfer.setData("text",name)
@@ -305,6 +367,7 @@ const b=planOrder.indexOf(to)
 planOrder.splice(a,1)
 planOrder.splice(b,0,from)
 
+saveCloud()
 renderTabs()
 
 }
@@ -362,6 +425,8 @@ planOrder.push(name)
 
 currentPlan=name
 
+saveCloud()
+
 renderTabs()
 openPlan()
 
@@ -417,6 +482,8 @@ note:"",
 state:"green"
 
 }
+
+saveCloud()
 
 drawPoints()
 
@@ -490,6 +557,8 @@ e.stopPropagation()
 if(mode==="delete"){
 
 delete plans[currentPlan].points[id]
+
+saveCloud()
 drawPoints()
 return
 
@@ -515,17 +584,6 @@ e.stopPropagation()
 
 }
 
-d.oncontextmenu=e=>{
-
-e.preventDefault()
-
-if(locked) return
-
-delete plans[currentPlan].points[id]
-drawPoints()
-
-}
-
 c.appendChild(d)
 
 })
@@ -547,7 +605,16 @@ drawPoints()
 
 }
 
-viewer.onmouseup=()=>draggingPoint=null
+viewer.onmouseup=()=>{
+
+if(draggingPoint){
+
+saveCloud()
+draggingPoint=null
+
+}
+
+}
 
 /* ZOOM */
 
@@ -580,6 +647,8 @@ const p=plans[currentPlan].points[selectedPoint]
 p.note=note.value
 p.state=state.value
 
+saveCloud()
+
 closePopup()
 drawPoints()
 
@@ -594,6 +663,10 @@ popup.style.display="none"
 function resetZoom(){
 fitPlan()
 }
+
+/* START */
+
+loadCloud()
 
 </script>
 
