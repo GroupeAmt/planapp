@@ -1,65 +1,74 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Plans Éclairage Extérieure</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<title>PlanApp</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
 <style>
-body{margin:0;font-family:Arial;background:#f3f4f6;overflow:hidden;}
+
+body{
+margin:0;
+font-family:Arial;
+background:#f1f5f9;
+overflow:hidden;
+}
 
 header{
-display:flex;
-gap:6px;
-padding:10px;
-background:#1f2937;
+background:#1e293b;
 color:white;
+padding:10px;
+display:flex;
+gap:8px;
 flex-wrap:wrap;
-align-items:center;
 }
 
 button{
-padding:6px 10px;
 border:none;
 border-radius:6px;
+padding:6px 12px;
+cursor:pointer;
 background:#2563eb;
 color:white;
-cursor:pointer;
 }
 
-button.active{background:#16a34a;}
+button.active{
+background:#16a34a;
+}
 
 #tabs{
+background:#e2e8f0;
+padding:6px;
 display:flex;
 gap:6px;
-padding:6px;
-background:#e5e7eb;
 overflow-x:auto;
 }
 
 .tab{
+background:#94a3b8;
 padding:6px 10px;
-background:#9ca3af;
 border-radius:6px;
 cursor:pointer;
-white-space:nowrap;
+user-select:none;
 }
 
-.tab.active{background:#2563eb;color:white;}
+.tab.active{
+background:#2563eb;
+color:white;
+}
 
 #viewer{
 position:relative;
-height:calc(100vh - 120px);
-background:#ddd;
+width:100vw;
+height:calc(100vh - 100px);
+background:#d4d4d4;
 overflow:hidden;
-cursor:grab;
 }
-
-#viewer.dragging{cursor:grabbing;}
 
 #planContainer{
 position:absolute;
@@ -68,7 +77,8 @@ transform-origin:0 0;
 
 .point{
 position:absolute;
-width:10px;height:10px;
+width:14px;
+height:14px;
 border-radius:50%;
 border:2px solid white;
 transform:translate(-50%,-50%);
@@ -83,55 +93,63 @@ position:absolute;
 background:white;
 border:1px solid #333;
 padding:10px;
+border-radius:6px;
 display:none;
 z-index:100;
 }
 
-textarea{width:200px;height:80px;}
+textarea{
+width:200px;
+height:80px;
+}
+
 </style>
+
 </head>
 
 <body>
 
 <header>
 
-<input type="file" id="planFile" accept="image/*">
+<input type="file" id="planFile" accept="image/*,.pdf">
+
 <button onclick="addPlan()">+ Plan</button>
-<button onclick="resetZoom()">🎯 Reset</button>
 
 <button id="btnAdd" onclick="setMode('add')">Ajouter point</button>
 <button id="btnDelete" onclick="setMode('delete')">Supprimer point</button>
 <button id="btnRead" onclick="setMode('read')" class="active">Lecture</button>
+
+<button onclick="resetZoom()">Reset zoom</button>
 
 <button onclick="toggleLock()" id="lockBtn">🔒</button>
 
 </header>
 
 <div id="tabs"></div>
+
 <div id="viewer"></div>
 
 <div id="popup" class="popup">
-<textarea id="note"></textarea><br><br>
+
+<textarea id="note"></textarea>
+
+<br><br>
+
 <select id="state">
 <option value="green">Fonctionnel</option>
 <option value="red">Défectueux</option>
-</select><br><br>
+</select>
+
+<br><br>
+
 <button onclick="saveNote()">Sauvegarder</button>
+
 </div>
 
 <script>
 
-// FIREBASE
-const firebaseConfig={
-apiKey:"AIzaSyC6g7hrPO5XIvUZR3hi-oSO_MoLFwdotZM",
-authDomain:"plan-eclairage.firebaseapp.com",
-projectId:"plan-eclairage"
-};
-
-firebase.initializeApp(firebaseConfig)
-const cloudDB=firebase.firestore()
-
 let plans={}
+let planOrder=[]
 let currentPlan=null
 
 let mode="read"
@@ -144,43 +162,48 @@ let offsetY=0
 let planWidth=0
 let planHeight=0
 
-let draggingView=false
 let draggingPoint=null
-let moved=false
-
-let startX=0
-let startY=0
-
 let selectedPoint=null
 
 const viewer=document.getElementById("viewer")
 
-btnAdd.style.display="none"
-btnDelete.style.display="none"
+/* LOCK */
 
-// LOCK
 function toggleLock(){
 
 if(locked){
-let pass=prompt("Mot de passe :")
-if(pass!=="git2846") return alert("Incorrect")
+
+const pass=prompt("Mot de passe")
+
+if(pass!=="git2846") return
+
 locked=false
 lockBtn.innerText="🔓"
+
 btnAdd.style.display="inline-block"
 btnDelete.style.display="inline-block"
+
 }else{
+
 locked=true
 mode="read"
 lockBtn.innerText="🔒"
+
 btnAdd.style.display="none"
 btnDelete.style.display="none"
+
 setMode("read")
-}
+
 }
 
-// MODE
+}
+
+/* MODE */
+
 function setMode(m){
+
 if(locked) return
+
 mode=m
 
 btnAdd.classList.remove("active")
@@ -190,76 +213,167 @@ btnRead.classList.remove("active")
 if(m==="add") btnAdd.classList.add("active")
 if(m==="delete") btnDelete.classList.add("active")
 if(m==="read") btnRead.classList.add("active")
+
 }
 
-// CLOUD
-async function saveCloud(){
-await cloudDB.collection("plans").doc("data").set({plans})
-}
+/* TABS */
 
-function loadCloud(){
-cloudDB.collection("plans").doc("data")
-.onSnapshot(doc=>{
-const data=doc.data()
-if(!data) return
-plans=data.plans||{}
-if(!currentPlan)
-currentPlan=Object.keys(plans)[0]
-renderTabs()
-openPlan(true)
-})
-}
-
-// TABS
 function renderTabs(){
 
 tabs.innerHTML=""
 
-Object.keys(plans).forEach(name=>{
+planOrder.forEach(name=>{
 
 const t=document.createElement("div")
+
 t.className="tab"
+t.draggable=true
+
 if(name===currentPlan) t.classList.add("active")
 
 t.innerText=name
 
 t.onclick=()=>{
+
+closePopup()
 currentPlan=name
 renderTabs()
-openPlan(true)
+openPlan()
+
+}
+
+/* RIGHT CLICK MENU */
+
+t.oncontextmenu=e=>{
+
+e.preventDefault()
+
+const action=prompt("1 = Renommer\n2 = Supprimer")
+
+if(action==="1"){
+
+const newName=prompt("Nouveau nom",name)
+
+if(newName && !plans[newName]){
+
+plans[newName]=plans[name]
+delete plans[name]
+
+planOrder=planOrder.map(p=>p===name?newName:p)
+
+currentPlan=newName
+
+}
+
+}
+
+if(action==="2"){
+
+if(confirm("Supprimer ce plan ?")){
+
+delete plans[name]
+
+planOrder=planOrder.filter(p=>p!==name)
+
+currentPlan=planOrder[0]
+
+}
+
+}
+
+renderTabs()
+openPlan()
+
+}
+
+/* DRAG TAB */
+
+t.ondragstart=e=>{
+e.dataTransfer.setData("text",name)
+}
+
+t.ondragover=e=>e.preventDefault()
+
+t.ondrop=e=>{
+
+const from=e.dataTransfer.getData("text")
+const to=name
+
+const a=planOrder.indexOf(from)
+const b=planOrder.indexOf(to)
+
+planOrder.splice(a,1)
+planOrder.splice(b,0,from)
+
+renderTabs()
+
 }
 
 tabs.appendChild(t)
 
 })
+
 }
 
-// ADD PLAN
-function addPlan(){
+/* ADD PLAN */
+
+async function addPlan(){
 
 const file=planFile.files[0]
 if(!file) return
 
 const reader=new FileReader()
 
-reader.onload=e=>{
+reader.onload=async e=>{
 
-const name=file.name.replace(/\.[^/.]+$/,"")
+let data=e.target.result
+let type=file.type
 
-plans[name]={file:e.target.result,points:{}}
+let name=file.name.replace(/\.[^/.]+$/,"")
+
+if(type==="application/pdf"){
+
+const pdf=await pdfjsLib.getDocument(data).promise
+const page=await pdf.getPage(1)
+
+const viewport=page.getViewport({scale:2})
+
+const canvas=document.createElement("canvas")
+canvas.width=viewport.width
+canvas.height=viewport.height
+
+await page.render({
+canvasContext:canvas.getContext("2d"),
+viewport
+}).promise
+
+data=canvas.toDataURL("image/jpeg",0.9)
+
+}
+
+plans[name]={
+
+file:data,
+points:{}
+
+}
+
+planOrder.push(name)
+
 currentPlan=name
 
-saveCloud()
 renderTabs()
-openPlan(true)
+openPlan()
 
 }
 
 reader.readAsDataURL(file)
+
 }
 
-// OPEN
-function openPlan(reset=false){
+/* OPEN PLAN */
+
+function openPlan(){
 
 viewer.innerHTML=""
 closePopup()
@@ -269,44 +383,50 @@ if(!p) return
 
 const container=document.createElement("div")
 container.id="planContainer"
+
 viewer.appendChild(container)
 
 const img=document.createElement("img")
 img.src=p.file
 
-img.onload=()=>{
-planWidth=img.width
-planHeight=img.height
-centerPlan()
-}
-
 container.appendChild(img)
 
-// CLICK (séparé du drag)
-viewer.addEventListener("click", e=>{
-if(moved){ moved=false; return }
-if(mode!=="add"||locked) return
+img.onload=()=>{
+
+planWidth=img.width
+planHeight=img.height
+
+fitPlan()
+drawPoints()
+
+}
+
+viewer.onclick=e=>{
+
+if(mode!=="add") return
 
 const pos=getCoords(e)
 
-plans[currentPlan].points[Date.now()]={
-x:pos.x,y:pos.y,note:"",state:"green"
+const id=Date.now()
+
+plans[currentPlan].points[id]={
+
+x:pos.x,
+y:pos.y,
+note:"",
+state:"green"
+
 }
 
-saveCloud()
 drawPoints()
-})
 
-drawPoints()
 }
 
-// RESET
-function resetZoom(){
-centerPlan()
 }
 
-// CENTER
-function centerPlan(){
+/* FIT */
+
+function fitPlan(){
 
 const rect=viewer.getBoundingClientRect()
 
@@ -316,99 +436,37 @@ offsetX=(rect.width-planWidth*scale)/2
 offsetY=(rect.height-planHeight*scale)/2
 
 updateTransform()
+
 }
+
+/* TRANSFORM */
 
 function updateTransform(){
+
 const c=document.getElementById("planContainer")
-if(c){
-c.style.transform=
-`translate(${offsetX}px,${offsetY}px) scale(${scale})`
-}
-}
 
-// ZOOM
-viewer.onwheel=e=>{
-e.preventDefault()
+if(c)
+c.style.transform=`translate(${offsetX}px,${offsetY}px) scale(${scale})`
 
-const rect=viewer.getBoundingClientRect()
-const mx=e.clientX-rect.left
-const my=e.clientY-rect.top
-
-const zoom=1.1
-let newScale=e.deltaY<0 ? scale*zoom : scale/zoom
-
-newScale=Math.max(0.2,Math.min(5,newScale))
-
-const wx=(mx-offsetX)/scale
-const wy=(my-offsetY)/scale
-
-offsetX=mx-wx*newScale
-offsetY=my-wy*newScale
-
-scale=newScale
-
-updateTransform()
 }
 
-// DRAG PLAN (FIX)
-viewer.onmousedown=e=>{
+/* COORDS */
 
-if(e.target.classList.contains("point")) return
-
-draggingView=true
-moved=false
-
-startX=e.clientX
-startY=e.clientY
-
-viewer.classList.add("dragging")
-}
-
-viewer.onmousemove=e=>{
-
-if(draggingView){
-
-const dx=e.clientX-startX
-const dy=e.clientY-startY
-
-if(Math.abs(dx)>3 || Math.abs(dy)>3){
-moved=true
-}
-
-offsetX+=dx
-offsetY+=dy
-
-startX=e.clientX
-startY=e.clientY
-
-updateTransform()
-}
-
-if(draggingPoint&&!locked){
-const pos=getCoords(e)
-plans[currentPlan].points[draggingPoint].x=pos.x
-plans[currentPlan].points[draggingPoint].y=pos.y
-drawPoints()
-}
-}
-
-viewer.onmouseup=()=>{
-draggingView=false
-draggingPoint=null
-viewer.classList.remove("dragging")
-saveCloud()
-}
-
-// COORD
 function getCoords(e){
+
 const rect=viewer.getBoundingClientRect()
+
 return{
+
 x:(e.clientX-rect.left-offsetX)/scale,
 y:(e.clientY-rect.top-offsetY)/scale
-}
+
 }
 
-// POINTS
+}
+
+/* POINTS */
+
 function drawPoints(){
 
 const c=document.getElementById("planContainer")
@@ -421,41 +479,100 @@ Object.entries(plans[currentPlan].points).forEach(([id,p])=>{
 const d=document.createElement("div")
 
 d.className="point "+p.state
+
 d.style.left=p.x+"px"
 d.style.top=p.y+"px"
 
 d.onclick=e=>{
+
 e.stopPropagation()
 
-if(mode==="delete"&&!locked){
+if(mode==="delete"){
+
 delete plans[currentPlan].points[id]
-saveCloud()
 drawPoints()
 return
+
 }
 
-if(mode==="read"){
 selectedPoint=id
+
 popup.style.display="block"
 popup.style.left=e.clientX+"px"
 popup.style.top=e.clientY+"px"
+
 note.value=p.note
 state.value=p.state
-}
+
 }
 
 d.onmousedown=e=>{
+
 if(locked) return
+
 draggingPoint=id
 e.stopPropagation()
+
+}
+
+d.oncontextmenu=e=>{
+
+e.preventDefault()
+
+if(locked) return
+
+delete plans[currentPlan].points[id]
+drawPoints()
+
 }
 
 c.appendChild(d)
 
 })
+
 }
 
-// NOTES
+/* DRAG POINT */
+
+viewer.onmousemove=e=>{
+
+if(!draggingPoint) return
+
+const pos=getCoords(e)
+
+plans[currentPlan].points[draggingPoint].x=pos.x
+plans[currentPlan].points[draggingPoint].y=pos.y
+
+drawPoints()
+
+}
+
+viewer.onmouseup=()=>draggingPoint=null
+
+/* ZOOM */
+
+viewer.onwheel=e=>{
+
+e.preventDefault()
+
+const rect=viewer.getBoundingClientRect()
+
+const mouseX=(e.clientX-rect.left-offsetX)/scale
+const mouseY=(e.clientY-rect.top-offsetY)/scale
+
+const zoom=e.deltaY<0?1.1:0.9
+
+scale*=zoom
+
+offsetX=e.clientX-rect.left-mouseX*scale
+offsetY=e.clientY-rect.top-mouseY*scale
+
+updateTransform()
+
+}
+
+/* NOTES */
+
 function saveNote(){
 
 const p=plans[currentPlan].points[selectedPoint]
@@ -463,10 +580,8 @@ const p=plans[currentPlan].points[selectedPoint]
 p.note=note.value
 p.state=state.value
 
-saveCloud()
+closePopup()
 drawPoints()
-
-popup.style.display="none"
 
 }
 
@@ -474,8 +589,11 @@ function closePopup(){
 popup.style.display="none"
 }
 
-// INIT
-loadCloud()
+/* RESET */
+
+function resetZoom(){
+fitPlan()
+}
 
 </script>
 
